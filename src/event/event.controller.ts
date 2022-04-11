@@ -4,36 +4,55 @@ import {
   Delete,
   Get,
   HttpCode,
+  Logger,
+  NotFoundException,
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEntity } from './event.entity';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { AttendeeEntity } from './attendee.entity';
+import { EventService } from './event.service';
+import { ListEvents } from './input/list.event';
 
 @Controller('/events')
 export class EventController {
+  private readonly logger = new Logger(EventController.name);
+
   constructor(
     @InjectRepository(EventEntity)
-    private readonly repository: Repository<EventEntity>,
+    private readonly eventRepository: Repository<EventEntity>,
+    @InjectRepository(AttendeeEntity)
+    private readonly attendeeRepository: Repository<AttendeeEntity>,
+    private readonly eventService: EventService,
   ) {}
 
   @Get()
-  async findAll() {
-    return await this.repository.find();
+  async findAll(@Query() filter: ListEvents) {
+    this.logger.debug(filter);
+    const events = await this.eventService.getEventsWithAttendeeCountFiltered(
+      filter,
+    );
+    return events;
   }
 
   @Get(':id')
   async findOne(@Param('id') id) {
-    return await this.repository.findOne(id);
+    const event = await this.eventRepository.findOne(id);
+    if (!event) {
+      throw new NotFoundException();
+    }
+    return event;
   }
 
   @Post()
   async create(@Body() input: CreateEventDto) {
-    return await this.repository.save({
+    return await this.eventRepository.save({
       ...input,
       when: new Date(input.when),
     });
@@ -41,8 +60,11 @@ export class EventController {
 
   @Patch(':id')
   async update(@Param('id') id, @Body() input: UpdateEventDto) {
-    const event = await this.repository.findOne(id);
-    return await this.repository.save({
+    const event = await this.eventRepository.findOne(id);
+    if (!event) {
+      throw new NotFoundException();
+    }
+    return await this.eventRepository.save({
       ...event,
       ...input,
       when: input.when ? new Date(input.when) : event.when,
@@ -52,7 +74,10 @@ export class EventController {
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id') id) {
-    const event = await this.repository.findOne(id);
-    await this.repository.remove(event);
+    const event = await this.eventRepository.findOne(id);
+    if (!event) {
+      throw new NotFoundException();
+    }
+    await this.eventRepository.remove(event);
   }
 }
